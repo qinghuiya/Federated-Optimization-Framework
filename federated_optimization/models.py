@@ -7,6 +7,8 @@ from torch import nn
 
 
 class MLP(nn.Module):
+    """Two-hidden-layer baseline that accepts vectors or flattened images."""
+
     def __init__(self, input_shape: tuple[int, ...], num_classes: int, hidden: int = 128) -> None:
         super().__init__()
         size = math.prod(input_shape)
@@ -24,6 +26,8 @@ class MLP(nn.Module):
 
 
 class SimpleCNN(nn.Module):
+    """Small convolutional baseline for MNIST- and CIFAR-sized images."""
+
     def __init__(self, input_shape: tuple[int, ...], num_classes: int) -> None:
         super().__init__()
         channels = input_shape[0]
@@ -42,6 +46,8 @@ class SimpleCNN(nn.Module):
 
 
 class BasicBlock(nn.Module):
+    """Two-convolution residual block used by the compact ResNet-18."""
+
     def __init__(self, in_channels: int, channels: int, stride: int = 1) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(in_channels, channels, 3, stride, 1, bias=False)
@@ -64,6 +70,8 @@ class BasicBlock(nn.Module):
 
 
 class ResNet18(nn.Module):
+    """ResNet-18 adapted to small images by removing the ImageNet max-pool stem."""
+
     def __init__(self, input_shape: tuple[int, ...], num_classes: int) -> None:
         super().__init__()
         self.channels = 64
@@ -78,6 +86,7 @@ class ResNet18(nn.Module):
         self.head = nn.Linear(512, num_classes)
 
     def _layer(self, channels: int, blocks: int, stride: int) -> nn.Sequential:
+        # Only the first block changes resolution/channels; later blocks preserve shape.
         layers = [BasicBlock(self.channels, channels, stride)]
         self.channels = channels
         layers.extend(BasicBlock(channels, channels) for _ in range(blocks - 1))
@@ -91,6 +100,7 @@ class ResNet18(nn.Module):
 def create_model(
     name: str, input_shape: tuple[int, ...], num_classes: int, **options
 ) -> nn.Module:
+    """Construct a model from a stable YAML/CLI-facing name."""
     key = name.lower().replace("-", "").replace("_", "")
     if key == "mlp":
         return MLP(input_shape, num_classes, hidden=int(options.get("hidden", 128)))
@@ -103,4 +113,3 @@ def create_model(
             raise ValueError("ResNet18 requires image-shaped inputs")
         return ResNet18(input_shape, num_classes)
     raise ValueError("Supported models: mlp, simple_cnn, resnet18")
-

@@ -11,6 +11,8 @@ from torch.utils.data import DataLoader, Dataset, Subset, TensorDataset
 
 @dataclass
 class DataBundle:
+    """Datasets after partitioning, ready for the experiment runner."""
+
     client_loaders: list[DataLoader]
     test_loader: DataLoader
     num_classes: int
@@ -19,6 +21,7 @@ class DataBundle:
 
 
 def labels_of(dataset: Dataset) -> np.ndarray:
+    """Read class labels from common datasets, with a generic fallback."""
     labels = getattr(dataset, "targets", getattr(dataset, "labels", None))
     if labels is None:
         labels = [dataset[index][1] for index in range(len(dataset))]
@@ -28,6 +31,7 @@ def labels_of(dataset: Dataset) -> np.ndarray:
 
 
 def iid_partition(size: int, num_clients: int, seed: int) -> list[list[int]]:
+    """Shuffle once and split examples as evenly as possible across clients."""
     if num_clients <= 0 or num_clients > size:
         raise ValueError("num_clients must be in [1, dataset size]")
     rng = np.random.default_rng(seed)
@@ -41,12 +45,19 @@ def dirichlet_partition(
     seed: int,
     min_samples: int = 1,
 ) -> list[list[int]]:
+    """Create label-skew using one Dirichlet draw per class.
+
+    A smaller ``alpha`` concentrates each class on fewer clients and therefore produces
+    stronger statistical heterogeneity.
+    """
     if alpha <= 0:
         raise ValueError("Dirichlet alpha must be positive")
     if num_clients <= 0 or num_clients * min_samples > len(labels):
         raise ValueError("The requested minimum client size is impossible")
     rng = np.random.default_rng(seed)
     clients: list[list[int]] = [[] for _ in range(num_clients)]
+    # Allocate every class separately. This preserves every example exactly once while
+    # allowing class proportions to differ substantially between clients.
     for label in np.unique(labels):
         indices = np.flatnonzero(labels == label)
         rng.shuffle(indices)
@@ -57,6 +68,8 @@ def dirichlet_partition(
         for client_id, count in enumerate(counts):
             clients[client_id].extend(indices[offset : offset + count].tolist())
             offset += count
+    # Very small alpha values can create empty clients. Repair them deterministically by
+    # moving examples from the current largest client.
     for client_id in range(num_clients):
         while len(clients[client_id]) < min_samples:
             donor = max(range(num_clients), key=lambda index: len(clients[index]))
@@ -71,11 +84,13 @@ def dirichlet_partition(
 def shard_partition(
     labels: np.ndarray, num_clients: int, shards_per_client: int, seed: int
 ) -> list[list[int]]:
+    """Create the classic pathological split from label-sorted shards."""
     if shards_per_client <= 0:
         raise ValueError("shards_per_client must be positive")
     shard_count = num_clients * shards_per_client
     if shard_count > len(labels):
         raise ValueError("There are more shards than examples")
+    # Sorting by label makes most shards contain only one or a few classes.
     sorted_indices = np.argsort(labels, kind="stable")
     shards = [chunk.tolist() for chunk in np.array_split(sorted_indices, shard_count)]
     rng = np.random.default_rng(seed)
@@ -87,6 +102,7 @@ def shard_partition(
 
 
 def make_synthetic_dataset(config: dict[str, Any], seed: int):
+    """Generate a download-free classification problem from Gaussian clusters."""
     samples = int(config.get("samples", 2000))
     features = int(config.get("features", 20))
     classes = int(config.get("classes", 4))
@@ -94,6 +110,7 @@ def make_synthetic_dataset(config: dict[str, Any], seed: int):
     if samples < 10 or features <= 0 or classes < 2 or not 0 < test_fraction < 1:
         raise ValueError("Invalid synthetic dataset configuration")
     generator = torch.Generator().manual_seed(seed)
+    # Each label owns a random feature-space center; unit Gaussian noise adds overlap.
     centers = torch.randn(classes, features, generator=generator) * 2.5
     labels = torch.randint(classes, (samples,), generator=generator)
     inputs = centers[labels] + torch.randn(samples, features, generator=generator)
@@ -109,6 +126,7 @@ def make_synthetic_dataset(config: dict[str, Any], seed: int):
 
 
 def load_dataset(config: dict[str, Any], seed: int):
+    """Load a supported dataset and return its classification metadata."""
     name = str(config.get("name", "synthetic")).lower().replace("-", "")
     if name == "synthetic":
         return make_synthetic_dataset(config, seed)
@@ -117,6 +135,8 @@ def load_dataset(config: dict[str, Any], seed: int):
 
     root = str(Path(config.get("root", "data")).expanduser())
     if name in {"mnist", "fashionmnist"}:
+        # Normalization constants follow the standard MNIST scale. FashionMNIST uses the
+        # same channel shape, which keeps this beginner example intentionally compact.
         transform = transforms.Compose(
             [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
         )
@@ -146,6 +166,7 @@ def load_dataset(config: dict[str, Any], seed: int):
 
 
 def build_data(config: dict[str, Any], seed: int) -> DataBundle:
+    """Load, partition, and wrap one dataset in deterministic DataLoaders."""
     train, test, num_classes, input_shape = load_dataset(config, seed)
     num_clients = int(config.get("num_clients", 20))
     partition = dict(config.get("partition", {"name": "dirichlet", "alpha": 0.5}))
@@ -171,6 +192,8 @@ def build_data(config: dict[str, Any], seed: int) -> DataBundle:
     batch_size = int(config.get("batch_size", 32))
     client_loaders = []
     for client_id, client_indices in enumerate(indices):
+        # A client-specific generator makes shuffling reproducible without coupling one
+        # client's batch order to another client's participation.
         generator = torch.Generator().manual_seed(seed + client_id)
         client_loaders.append(
             DataLoader(
@@ -188,4 +211,3 @@ def build_data(config: dict[str, Any], seed: int) -> DataBundle:
         num_workers=0,
     )
     return DataBundle(client_loaders, test_loader, num_classes, input_shape, indices)
-

@@ -1,3 +1,5 @@
+"""Small, autograd-free operations on PyTorch ``state_dict`` mappings."""
+
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
@@ -10,6 +12,7 @@ State = dict[str, torch.Tensor]
 def clone_state(
     state: Mapping[str, torch.Tensor], *, device: str | torch.device | None = None
 ) -> State:
+    """Detach and clone a state so client/server updates never alias model storage."""
     return {
         name: (
             tensor.detach().clone().to(device=device)
@@ -23,6 +26,11 @@ def clone_state(
 def weighted_average(
     states: Iterable[Mapping[str, torch.Tensor]], weights: Iterable[float]
 ) -> State:
+    """Sample-weight floating tensors and safely copy integer model buffers.
+
+    Integer buffers (for example BatchNorm's batch counter) cannot be averaged without
+    changing dtype semantics. We copy them from the largest-weight client instead.
+    """
     states = list(states)
     weights = [float(weight) for weight in weights]
     if not states or len(states) != len(weights):
@@ -45,6 +53,7 @@ def weighted_average(
 
 
 def state_delta(new: Mapping[str, torch.Tensor], old: Mapping[str, torch.Tensor]) -> State:
+    """Return ``new - old`` for floating/complex entries only."""
     return {
         name: new[name] - value
         for name, value in old.items()
@@ -57,6 +66,7 @@ def add_delta(
     delta: Mapping[str, torch.Tensor],
     alpha: float = 1.0,
 ) -> State:
+    """Return a cloned base state plus a scaled floating-point delta."""
     output = clone_state(base)
     for name, value in delta.items():
         output[name].add_(value.to(output[name].device), alpha=float(alpha))
@@ -64,6 +74,7 @@ def add_delta(
 
 
 def zeros_like(state: Mapping[str, torch.Tensor]) -> State:
+    """Create zero tensors for the optimizable entries of a state mapping."""
     return {
         name: torch.zeros_like(value)
         for name, value in state.items()

@@ -20,6 +20,7 @@ def seed_everything(seed: int) -> None:
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
+    """Load one YAML mapping and reject ambiguous top-level scalar/list files."""
     with Path(path).open("r", encoding="utf-8") as handle:
         config = yaml.safe_load(handle)
     if not isinstance(config, dict):
@@ -28,6 +29,7 @@ def load_config(path: str | Path) -> dict[str, Any]:
 
 
 def save_config(config: Mapping[str, Any], path: str | Path) -> None:
+    """Write a human-readable resolved configuration for reproducibility."""
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("w", encoding="utf-8") as handle:
@@ -35,10 +37,10 @@ def save_config(config: Mapping[str, Any], path: str | Path) -> None:
 
 
 def resolve_device(requested: str) -> torch.device:
+    """Resolve ``auto`` and fail clearly when an unavailable GPU is requested."""
     key = requested.lower()
     if key == "auto":
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if key == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA was requested, but PyTorch cannot access a CUDA device.")
     return torch.device(key)
-

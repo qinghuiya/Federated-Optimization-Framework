@@ -9,6 +9,7 @@ from federated_optimization.utils import load_config
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Define a small set of convenient overrides for the YAML configuration."""
     parser = argparse.ArgumentParser(description="Federated Optimization Framework trainer")
     parser.add_argument("--config", default="configs/synthetic_fedavg.yaml")
     parser.add_argument("--output", default="outputs/run")
@@ -21,8 +22,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    """Load configuration, apply explicit CLI overrides, and start one run."""
     args = build_parser().parse_args()
     config = load_config(args.config)
+    # CLI values intentionally override YAML only when explicitly provided. This keeps
+    # the resolved configuration truthful and makes shell-based comparisons convenient.
     if args.algorithm:
         config.setdefault("federated", {})["algorithm"] = args.algorithm
     if args.optimizer:
@@ -40,4 +44,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

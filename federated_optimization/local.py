@@ -54,12 +54,15 @@ def create_optimizer(
 def create_scheduler(
     optimizer: torch.optim.Optimizer, config: Mapping[str, Any] | None
 ) -> torch.optim.lr_scheduler.LRScheduler | None:
+    """Create an optional local learning-rate schedule from configuration."""
     if not config:
         return None
     options = dict(config)
     name = str(options.pop("name", "none")).lower().replace("-", "_")
     if name in {"", "none", "constant"}:
         return None
+    # Keep the registry explicit: typos fail early instead of being interpreted as an
+    # arbitrary import path or silently falling back to a constant learning rate.
     schedulers: dict[str, type[torch.optim.lr_scheduler.LRScheduler]] = {
         "step": torch.optim.lr_scheduler.StepLR,
         "multistep": torch.optim.lr_scheduler.MultiStepLR,

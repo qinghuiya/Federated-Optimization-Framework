@@ -14,6 +14,8 @@ from federated_optimization.state import State, clone_state, zeros_like
 
 @dataclass
 class ClientResult:
+    """The minimal information a client sends back to the simulated server."""
+
     client_id: int
     state: State
     num_examples: int
@@ -60,10 +62,13 @@ class ClientTrainer:
             raise ValueError("proximal_mu cannot be negative")
 
         device_state = {name: value.to(self.device) for name, value in global_state.items()}
+        # Every participation starts from the same round-level global checkpoint. This
+        # reset prevents the reusable worker model from leaking state between clients.
         self.model.load_state_dict(device_state, strict=True)
         self.model.train()
         optimizer = create_optimizer(self.model.parameters(), optimizer_config)
         scheduler = create_scheduler(optimizer, scheduler_config)
+        # FedProx and SCAFFOLD both need the exact pre-training client parameters.
         initial_parameters = {
             name: parameter.detach().clone() for name, parameter in self.model.named_parameters()
         }
@@ -85,12 +90,16 @@ class ClientTrainer:
             logits = self.model(inputs)
             loss = self.loss_fn(logits, targets)
             if proximal_mu:
+                # FedProx: discourage a heterogeneous client from drifting too far from
+                # the round's global model by adding mu/2 * ||w - w_global||^2.
                 penalty = torch.zeros((), device=self.device)
                 for name, parameter in self.model.named_parameters():
                     penalty.add_(torch.sum((parameter - initial_parameters[name]) ** 2))
                 loss = loss + 0.5 * proximal_mu * penalty
             loss.backward()
             if use_scaffold:
+                # SCAFFOLD replaces the raw stochastic gradient g with g + c - c_i,
+                # where c is the server control and c_i belongs to this client.
                 assert global_control is not None and client_control is not None
                 for name, parameter in self.model.named_parameters():
                     if parameter.grad is not None:
@@ -107,6 +116,8 @@ class ClientTrainer:
             completed_steps += 1
 
         if local_steps is not None:
+            # Fixed-step mode is useful when clients must perform equal computation. A
+            # short loader is cycled instead of terminating the client early.
             for _ in range(local_steps):
                 try:
                     batch = next(iterator)
@@ -118,6 +129,8 @@ class ClientTrainer:
                         raise RuntimeError(f"Client {client_id} has no training batches") from exc
                 update(batch)
         else:
+            # Epoch mode naturally permits different step counts when client datasets
+            # have different sizes, which is one motivation for FedNova.
             assert local_epochs is not None
             for _ in range(local_epochs):
                 seen_batch = False
@@ -134,6 +147,8 @@ class ClientTrainer:
             if learning_rate <= 0:
                 raise ValueError("SCAFFOLD requires a positive client learning rate")
             control_delta = {}
+            # Closed-form SCAFFOLD control update after K constant-lr SGD steps:
+            # c_i(new) = c_i - c + (w_global - w_local) / (K * lr).
             for name, parameter in self.model.named_parameters():
                 old_control = client_control[name].to(self.device)
                 new_control = (
@@ -147,6 +162,8 @@ class ClientTrainer:
         return ClientResult(
             client_id=client_id,
             state=clone_state(self.model.state_dict(), device="cpu"),
+            # FedAvg weights by local dataset size, not by examples processed. The latter
+            # would accidentally give extra weight to clients configured for more epochs.
             num_examples=max(int(len(loader.dataset)), 1),
             steps=completed_steps,
             mean_loss=weighted_loss / max(total_examples, 1),
@@ -155,4 +172,5 @@ class ClientTrainer:
 
 
 def empty_control(model: nn.Module) -> State:
+    """Create zero SCAFFOLD control tensors matching the model parameters."""
     return zeros_like(dict(model.named_parameters()))
