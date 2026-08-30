@@ -7,10 +7,6 @@ federated optimization algorithms. It keeps the training loop readable, exposes 
 and server optimization as separate components, and includes tests for every advertised
 algorithm.
 
-> This repository is a clean general-purpose rewrite. It intentionally contains no
-> FedHodge, FedMZ, DriVE, unpublished method, experiment archive, or private research
-> artifact from the project that inspired it.
-
 ## Why this project exists
 
 The first federated-learning experiment is often slowed down by infrastructure rather
