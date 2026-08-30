@@ -1,0 +1,24 @@
+name: Algorithm request
+description: Propose a federated or local optimization method
+title: "[Algorithm]: "
+labels: [enhancement, algorithm]
+body:
+  - type: input
+    id: paper
+    attributes:
+      label: Original paper or primary source
+    validations:
+      required: true
+  - type: textarea
+    id: value
+    attributes:
+      label: Why it belongs in this framework
+    validations:
+      required: true
+  - type: textarea
+    id: state
+    attributes:
+      label: Required client/server state and assumptions
+    validations:
+      required: true
+

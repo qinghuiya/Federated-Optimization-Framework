@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "federated-optimization-framework"
+version = "1.0.0"
+description = "A beginner-friendly, extensible PyTorch framework for federated optimization research and education."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Federated Optimization Framework contributors"}]
+keywords = ["federated-learning", "optimization", "pytorch", "fedavg", "fedprox"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Education",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+  "numpy>=1.26",
+  "pyyaml>=6.0",
+  "torch>=2.3",
+  "torchvision>=0.18",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+fedopt-train = "federated_optimization.cli:main"
+
+[project.urls]
+Documentation = "https://github.com/qinghuiya/Federated-Optimization-Framework#readme"
+Issues = "https://github.com/qinghuiya/Federated-Optimization-Framework/issues"
+Source = "https://github.com/qinghuiya/Federated-Optimization-Framework"
+
+[tool.setuptools.packages.find]
+include = ["federated_optimization*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["build", "work-uv", "work-uv-cache", "workwheel"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

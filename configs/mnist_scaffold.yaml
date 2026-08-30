@@ -1,0 +1,30 @@
+experiment:
+  seed: 0
+  device: auto
+  evaluate_every: 1
+  verbose: true
+
+data:
+  name: mnist
+  root: data
+  num_clients: 50
+  batch_size: 32
+  partition:
+    name: shard
+    shards_per_client: 2
+
+model:
+  name: simple_cnn
+
+local:
+  steps: 10
+  optimizer:
+    name: sgd
+    lr: 0.05
+
+federated:
+  algorithm: scaffold
+  rounds: 50
+  participation: 0.2
+  server: {}
+
